@@ -33,7 +33,14 @@ async function fetchBeers(page = 1) {
         }
         document.getElementById('avg-rating-stars').innerHTML = avgStarsHtml;
         
+        // Update Total Beers & Breweries Stats Counters
         document.getElementById('total-beers').textContent = data.total.toLocaleString();
+        
+        const breweriesEl = document.getElementById('total-breweries') || document.querySelector('.breweries-count-element');
+        if (breweriesEl && data.totalBreweries !== undefined) {
+            breweriesEl.textContent = data.totalBreweries.toLocaleString();
+        }
+
         const totalPages = Math.ceil(data.total / limit) || 1;
         document.getElementById('page-indicator').textContent = `Page ${data.page} of ${totalPages}`;
         
@@ -250,6 +257,7 @@ function setStarRating(val, isHalf) {
     const numericInput = document.getElementById('new-rank');
     const numericDisplay = document.getElementById('rank-numeric-display');
     const starContainer = document.getElementById('star-container');
+    const halfBtn = document.getElementById('half-star-btn');
     
     let totalVal = val + (isHalf ? 0.5 : 0);
     if (totalVal < 0) totalVal = 0;
@@ -257,6 +265,19 @@ function setStarRating(val, isHalf) {
     
     if (numericInput) numericInput.value = totalVal > 0 ? totalVal : '';
     if (numericDisplay) numericDisplay.textContent = totalVal > 0 ? totalVal.toFixed(1) : '--';
+    
+    // Toggle active blue styling on the single +.5 button
+    if (halfBtn) {
+        if (isHalf) {
+            halfBtn.style.background = 'rgba(59, 130, 246, 0.2)';
+            halfBtn.style.color = '#3b82f6';
+            halfBtn.style.borderColor = '#3b82f6';
+        } else {
+            halfBtn.style.background = 'rgba(255, 255, 255, 0.05)';
+            halfBtn.style.color = 'var(--text-muted)';
+            halfBtn.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+        }
+    }
     
     if (starContainer) {
         let starsHtml = '';
@@ -490,27 +511,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // Star Container & Half-point handler
     const starContainer = document.getElementById('star-container');
     const numericDisplay = document.getElementById('rank-numeric-display');
+    const halfBtn = document.getElementById('half-star-btn');
+
+    if (halfBtn) {
+        halfBtn.addEventListener('click', () => {
+            const currentVal = parseFloat(document.getElementById('new-rank')?.value) || 0;
+            let baseVal = Math.floor(currentVal);
+            if (baseVal === 0) baseVal = 1;
+            let newVal = (currentVal % 1 === 0.5) ? baseVal : Math.min(5, baseVal + 0.5);
+            setStarRating(baseVal, newVal % 1 === 0.5);
+        });
+    }
 
     if (starContainer && numericDisplay) {
-        let halfBtn = document.getElementById('half-point-toggle');
-        if (!halfBtn) {
-            halfBtn = document.createElement('button');
-            halfBtn.id = 'half-point-toggle';
-            halfBtn.type = 'button';
-            halfBtn.textContent = '+.5';
-            halfBtn.title = 'Add .5 to rating';
-            halfBtn.style.cssText = "margin-left: 12px; padding: 3px 8px; font-size: 12px; font-weight: 600; background: #1f2937; color: #9ca3af; border: 1px solid #374151; border-radius: 4px; cursor: pointer;";
-            
-            halfBtn.addEventListener('click', () => {
-                const currentVal = parseFloat(document.getElementById('new-rank')?.value) || 0;
-                let baseVal = Math.floor(currentVal);
-                if (baseVal === 0) baseVal = 1;
-                let newVal = (currentVal % 1 === 0.5) ? baseVal : Math.min(5, baseVal + 0.5);
-                setStarRating(baseVal, newVal % 1 === 0.5);
-            });
-            starContainer.parentNode.insertBefore(halfBtn, starContainer.nextSibling);
-        }
-
         starContainer.addEventListener('click', (e) => {
             const stars = starContainer.querySelectorAll('span');
             stars.forEach((star, index) => {

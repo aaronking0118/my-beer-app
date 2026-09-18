@@ -1,0 +1,5 @@
+Saved 9/17/2026 @ 2:55PM
+
+App looks good and is functioning as expected... add new beer works good.
+
+Edit beer not currently functioning... need to code for that

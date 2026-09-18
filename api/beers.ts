@@ -1,7 +1,30 @@
 import { neon } from '@neondatabase/serverless';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-export default async function handler(req, res) {
-    const sql = neon(process.env.DATABASE_URL);
+// Define the shape of a Beer object for strict type safety
+interface Beer {
+    id?: number;
+    beer_number?: number;
+    brewery_name?: string;
+    beer_name?: string;
+    beer_style?: string;
+    abv?: number | null;
+    ibu?: number | null;
+    srm?: number | null;
+    rank?: number | null;
+    tasting_notes?: string | null;
+    country?: string | null;
+    state?: string | null;
+    consumption_date?: string | null;
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) {
+        return res.status(500).json({ error: 'DATABASE_URL environment variable is not defined.' });
+    }
+
+    const sql = neon(databaseUrl);
 
     try {
         // Handle PUT request to update an existing beer
@@ -16,19 +39,23 @@ export default async function handler(req, res) {
                 tasting_notes,
                 country,
                 state
-            } = req.body;
+            } = req.body as Beer;
 
             if (!id && !beer_number) {
                 return res.status(400).json({ error: 'Beer ID or beer_number is required for updates.' });
             }
 
+            const parsedAbv = abv !== '' && abv != null ? parseFloat(String(abv)) : null;
+            const parsedIbu = ibu !== '' && ibu != null ? parseInt(String(ibu), 10) : null;
+            const parsedRank = rank !== '' && rank != null ? parseFloat(String(rank)) : null;
+
             const updateResult = await sql`
                 UPDATE beers 
                 SET 
                     beer_style = COALESCE(${beer_style || null}, beer_style),
-                    abv = COALESCE(${abv !== '' && abv != null ? parseFloat(abv) : null}, abv),
-                    ibu = COALESCE(${ibu !== '' && ibu != null ? parseInt(ibu) : null}, ibu),
-                    rank = COALESCE(${rank !== '' && rank != null ? parseFloat(rank) : null}, rank),
+                    abv = COALESCE(${parsedAbv}, abv),
+                    ibu = COALESCE(${parsedIbu}, ibu),
+                    rank = COALESCE(${parsedRank}, rank),
                     tasting_notes = COALESCE(${tasting_notes || null}, tasting_notes),
                     country = COALESCE(${country || null}, country),
                     state = COALESCE(${state || null}, state)
@@ -58,7 +85,7 @@ export default async function handler(req, res) {
                 rank,
                 tasting_notes,
                 consumption_date
-            } = req.body;
+            } = req.body as Beer;
 
             if (!brewery_name || !beer_name) {
                 return res.status(400).json({ error: 'Brewery name and beer name are required.' });
@@ -67,11 +94,11 @@ export default async function handler(req, res) {
             // Get next sequential beer_number if not provided
             if (!beer_number) {
                 const maxResult = await sql`SELECT MAX(beer_number) as max_num FROM beers`;
-                beer_number = (maxResult[0]?.max_num || 10000) + 1;
+                beer_number = (Number(maxResult[0]?.max_num) || 10000) + 1;
             }
 
-            // Default consumption date to today if not provided
             const finalConsumptionDate = consumption_date || new Date().toISOString().split('T')[0];
+            const parsedRank = rank !== '' && rank != null ? parseFloat(String(rank)) : null;
 
             const insertResult = await sql`
                 INSERT INTO beers (
@@ -89,7 +116,7 @@ export default async function handler(req, res) {
                     ${beer_name},
                     ${country || null},
                     ${state || null},
-                    ${rank || null},
+                    ${parsedRank},
                     ${tasting_notes || null},
                     ${finalConsumptionDate}
                 )
@@ -115,13 +142,13 @@ export default async function handler(req, res) {
             return res.status(200).json({ breweries });
         }
 
-        // GET request handler (existing logic)
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 50;
+        // GET request handler parameters
+        const page = parseInt(String(req.query.page), 10) || 1;
+        const limit = parseInt(String(req.query.limit), 10) || 50;
         const offset = (page - 1) * limit;
-        const search = req.query.search ? `%${req.query.search}%` : '%%';
-        const style = req.query.style || '';
-        const sort = req.query.sort || 'brewery_asc';
+        const search = req.query.search ? `%${String(req.query.search)}%` : '%%';
+        const style = String(req.query.style || '');
+        const sort = String(req.query.sort || 'brewery_asc');
 
         let orderBy = sql`ORDER BY brewery_name ASC, beer_name ASC`;
         if (sort === 'oldest') orderBy = sql`ORDER BY id ASC`;
@@ -160,23 +187,25 @@ export default async function handler(req, res) {
             `;
         }
 
-        const [beers, countResult, stylesResult] = await Promise.all([
+        const [beers, countResult, stylesResult, breweryCountResult] = await Promise.all([
             beersQuery,
             countQuery,
-            sql`SELECT DISTINCT beer_style FROM beers WHERE beer_style IS NOT NULL ORDER BY beer_style ASC`
+            sql`SELECT DISTINCT beer_style FROM beers WHERE beer_style IS NOT NULL ORDER BY beer_style ASC`,
+            sql`SELECT COUNT(DISTINCT brewery_name) as total_breweries FROM beers WHERE brewery_name IS NOT NULL`
         ]);
 
         res.setHeader('Content-Type', 'application/json');
-        res.status(200).json({
+        return res.status(200).json({
             beers,
-            total: parseInt(countResult[0].total),
+            total: parseInt(countResult[0].total, 10),
+            totalBreweries: parseInt(breweryCountResult[0].total_breweries, 10),
             page,
             limit,
-            styles: stylesResult.map(s => s.beer_style)
+            styles: stylesResult.map((s: any) => s.beer_style)
         });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Database error:', error);
-        res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: error.message });
     }
 }
